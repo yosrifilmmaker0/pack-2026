@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yosri Filmmaker - Catalog 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Montserrat:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gold: #d4af37;
+            --gold-gradient: linear-gradient(135deg, #f9f295 0%, #d4af37 50%, #aa8623 100%);
+            --ruby: #e63946;
+            --emerald: #10b981;
+            --dark-bg: #050505;
+        }
+        
+        body { 
+            font-family: 'Montserrat', sans-serif; 
+            background-color: var(--dark-bg); 
+            color: #fff;
+            background-image: radial-gradient(circle at 50% 20%, #1a1a1a 0%, #050505 100%);
+            background-attachment: fixed;
+            overflow-x: hidden; /* Prevent horizontal scroll on mobile */
+        }
+        
+        .luxury-font { font-family: 'Playfair Display', serif; }
+        
+        .gold-text {
+            background: var(--gold-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 900;
+        }
+
+        .card-premium {
+            background: #ffffff;
+            color: #111;
+            border-radius: 12px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            border: 1px solid rgba(255,255,255,0.1);
+            width: 100%; /* Ensure full width on mobile */
+        }
+
+        .card-premium.dark {
+            background: #0f1115;
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .card-premium:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        }
+
+        .badge-exclusive {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 20px;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            z-index: 20;
+            border-radius: 6px;
+            text-align: center;
+            white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        .price-tag {
+            padding: 24px;
+            text-align: center;
+            font-weight: 900;
+            font-size: 1.8rem;
+            margin-top: auto;
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
+        }
+
+        .benefit-list {
+            padding: 25px;
+            font-size: 12px;
+            line-height: 1.6;
+            font-weight: 600;
+        }
+
+        .benefit-list li {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .benefit-list li::before {
+            content: "✓";
+            margin-right: 10px;
+            font-weight: bold;
+            opacity: 0.7;
+        }
+
+        .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, rgba(212, 175, 55, 0.4), transparent);
+            margin: 40px 0;
+        }
+
+        /* Mobile specific adjustments */
+        @media (max-width: 768px) {
+            .header-title { font-size: 4rem !important; }
+            .header-subtitle { font-size: 2.5rem !important; }
+            .benefit-list { padding: 20px; font-size: 11px; }
+            .price-tag { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body class="py-10 md:py-20 px-4">
+
+    <!-- Header -->
+    <header class="max-w-6xl mx-auto text-center mb-20 md:mb-32">
+        <h1 class="header-title luxury-font text-6xl md:text-9xl font-black uppercase tracking-tighter mb-4 text-white">YOSRI</h1>
+        <div class="flex items-center justify-center -mt-4 md:-mt-6">
+            <div class="hidden md:block h-[1px] w-24 bg-zinc-800"></div>
+            <h2 class="header-subtitle luxury-font italic text-4xl md:text-7xl px-4 md:px-8 gold-text">Filmmaker</h2>
+            <div class="hidden md:block h-[1px] w-24 bg-zinc-800"></div>
+        </div>
+        <p class="mt-8 md:mt-12 text-[9px] md:text-[11px] tracking-[0.8em] md:tracking-[1.2em] uppercase font-bold opacity-50 text-gray-300">The 2026 Master Collection</p>
+    </header>
+
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- SECTION 1: CORE -->
+        <div class="text-center mb-12">
+            <h3 class="luxury-font text-3xl md:text-4xl italic gold-text">Collections Classiques</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 mb-20">
+            
+            <!-- SILVER -->
+            <div class="card-premium">
+                <div class="p-8 md:p-10 text-center">
+                    <p class="text-[9px] tracking-[0.3em] text-zinc-500 uppercase font-bold mb-3">Essentiel</p>
+                    <h4 class="luxury-font text-3xl md:text-4xl font-black uppercase text-black">SILVER</h4>
+                    <p class="text-[10px] font-extrabold mt-3 text-zinc-600">1 JOURNÉE</p>
+                </div>
+                <ul class="benefit-list flex-grow text-zinc-800">
+                    <li>Photos Soirée (Nombre illimité)</li>
+                    <li>60 Tirages Photos (15x21)</li>
+                    <li>1 Vidéo Reel Cinématique (Insta/TikTok)</li>
+                    <li>Support Numérique (Clé USB)</li>
+                </ul>
+                <div class="price-tag bg-zinc-900 text-white">1000 DT</div>
+            </div>
+
+            <!-- RUBY -->
+            <div class="card-premium border-2 border-red-600 shadow-xl">
+                <div class="badge-exclusive bg-red-600 text-white leading-tight">
+                    <span class="block">LE PLUS DEMANDÉ</span>
+                </div>
+                <div class="p-8 md:p-10 text-center">
+                    <p class="text-[9px] tracking-[0.3em] text-red-500 uppercase font-bold mb-3">Populaire</p>
+                    <h4 class="luxury-font text-3xl md:text-4xl font-black uppercase text-red-600">RUBY</h4>
+                    <p class="text-[10px] font-extrabold mt-3 text-red-500">1 JOURNÉE</p>
+                </div>
+                <ul class="benefit-list flex-grow text-zinc-900">
+                    <li class="font-bold">Photos Soirée (Illimitées)</li>
+                    <li class="font-bold text-red-600">Vidéo Continue (Toute la soirée)</li>
+                    <li>80 Tirages Photos (15x21)</li>
+                    <li>1 Vidéo Reel (Format Mobile HD)</li>
+                    <li>Support Numérique (Clé USB)</li>
+                </ul>
+                <div class="price-tag bg-red-600 text-white">1600 DT</div>
+            </div>
+
+            <!-- GOLD -->
+            <div class="card-premium border-2 border-[#d4af37] shadow-2xl">
+                <div class="badge-exclusive leading-tight" style="background:var(--gold-gradient); color:#000;">
+                    <span class="block text-[10px] font-black">CONSEILLÉ</span>
+                    <span class="block text-[9px] font-bold opacity-80 uppercase">Best Seller 2026</span>
+                </div>
+                <div class="p-8 md:p-10 text-center">
+                    <p class="text-[9px] tracking-[0.3em] text-yellow-600 uppercase font-bold mb-3">Signature Artistique</p>
+                    <h4 class="luxury-font text-4xl md:text-5xl font-black uppercase text-black">GOLD</h4>
+                    <p class="text-[10px] font-extrabold mt-3 text-yellow-600">1 JOURNÉE</p>
+                </div>
+                <ul class="benefit-list flex-grow text-black font-bold">
+                    <li class="underline">Vidéo Continue (Toute la soirée)</li>
+                    <li class="underline">Clip Vidéo Artistique (3-5 min)</li>
+                    <li>100 Tirages Photos (15x21)</li>
+                    <li class="text-yellow-700">BOX LUXE PERSONNALISÉE</li>
+                    <li>Support Numérique (Clé USB)</li>
+                </ul>
+                <div class="price-tag" style="background:var(--gold-gradient); color:#000;">2200 DT</div>
+            </div>
+
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- SECTION 2: PRESTIGE -->
+        <div class="text-center mb-12 mt-10 md:mt-20">
+            <h3 class="luxury-font text-3xl md:text-4xl italic gold-text">Collections Prestige</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 mb-20 md:mb-32">
+            
+            <!-- EMERALD -->
+            <div class="card-premium dark">
+                <div class="badge-exclusive bg-emerald-600 text-white leading-tight">
+                    <span class="block">OFFRE COMBO</span>
+                </div>
+                <div class="p-8 md:p-10 text-center">
+                    <h4 class="luxury-font text-3xl md:text-4xl font-black uppercase text-emerald-500">EMERALD</h4>
+                    <p class="text-[10px] font-bold mt-3 text-emerald-600">1 JOURNÉE</p>
+                </div>
+                <ul class="benefit-list flex-grow text-zinc-300">
+                    <li class="text-emerald-400 font-black">Tout le contenu GOLD inclus</li>
+                    <li>Drone 4K (Prises aériennes)</li>
+                    <li>Shooting Extérieur Premium</li>
+                    <li class="text-white font-bold">PHOTOBOOK PRESTIGE (20x30 cm)</li>
+                </ul>
+                <div class="price-tag bg-white text-black">2700 DT</div>
+            </div>
+
+            <!-- DIAMOND -->
+            <div class="card-premium dark">
+                <div class="p-8 md:p-10 text-center">
+                    <h4 class="luxury-font text-3xl md:text-4xl font-black uppercase text-white">DIAMOND</h4>
+                    <p class="text-[10px] font-bold mt-3 text-zinc-500">1 JOURNÉE</p>
+                </div>
+                <ul class="benefit-list flex-grow text-zinc-300">
+                    <li>Equipe 3 Caméras (Multi-angle)</li>
+                    <li>Girafe Cinéma (Grue Pro)</li>
+                    <li>3 Vidéوس Reel + Stories Live</li>
+                    <li class="text-white font-black underline">GRAND PHOTOBOOK VIP (30x40 cm)</li>
+                </ul>
+                <div class="price-tag bg-zinc-800 text-white">3500 DT</div>
+            </div>
+
+            <!-- ROYAL VIP -->
+            <div class="card-premium dark border border-yellow-600/40 shadow-[0_0_60px_rgba(212,175,55,0.1)]">
+                <div class="badge-exclusive bg-yellow-600 text-black leading-tight">
+                    <span class="block">LUXE ABSOLU</span>
+                </div>
+                <div class="p-8 md:p-10 text-center">
+                    <h4 class="luxury-font text-4xl md:text-5xl font-black uppercase gold-text">ROYAL VIP</h4>
+                    <p class="text-[10px] font-bold mt-3 text-yellow-600">2 JOURNÉES</p>
+                </div>
+                <ul class="benefit-list flex-grow text-zinc-200">
+                    <li class="font-bold">2 Jours de couverture complète</li>
+                    <li>Girafe Cinéma + Drone 4K Pro</li>
+                    <li>Vidéo Continue + Clip Artistique</li>
+                    <li>Shooting Extérieur & Pre-Wedding</li>
+                    <li class="gold-text">Grand Photobook VIP (120 Photos)</li>
+                </ul>
+                <div class="price-tag" style="background:var(--gold-gradient); color:#000;">5200 DT</div>
+            </div>
+
+        </div>
+
+        <!-- LOGISTIQUE & LIVRAISON -->
+        <div class="max-w-4xl mx-auto mb-20 md:mb-32 bg-zinc-900/40 p-6 md:p-10 rounded-2xl border-2 border-dashed border-white/10">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10 text-center">
+                <div>
+                    <h3 class="luxury-font text-2xl gold-text mb-6 italic">Déplacement</h3>
+                    <div class="space-y-4">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Ville de Sousse</span>
+                            <span class="text-xl font-black text-white">GRATUIT</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Hors Sousse</span>
+                            <span class="text-xl font-black text-white">+100 DT</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="border-t border-zinc-800 pt-8 md:border-t-0 md:border-l md:pt-0 md:pl-12">
+                    <h3 class="luxury-font text-2xl gold-text mb-6 italic">Livraison</h3>
+                    <div class="flex flex-col h-full justify-center">
+                        <span class="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Délai de traitement</span>
+                        <span class="text-2xl font-black text-white">30 JOURS</span>
+                        <p class="mt-4 text-[10px] text-zinc-500 italic uppercase tracking-wider">Hors options de service express</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIVRAISON EXPRESS -->
+        <div class="max-w-4xl mx-auto mb-20 md:mb-32 bg-zinc-900/40 p-8 md:p-12 rounded-2xl border border-white/10">
+            <div class="text-center mb-10 md:mb-12">
+                <h3 class="luxury-font text-3xl md:text-4xl italic text-white mb-2">Service Express</h3>
+                <p class="text-[10px] md:text-[11px] tracking-[0.4em] uppercase opacity-40">Rapidité & Excellence</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                <div class="express-card p-8 md:p-10 text-center">
+                    <h4 class="luxury-font text-2xl md:text-3xl text-yellow-500 mb-2">48 Heures</h4>
+                    <p class="text-[10px] text-zinc-500 uppercase tracking-widest mb-6">Remise intégrale garantie</p>
+                    <div class="text-4xl md:text-5xl font-black luxury-font italic">500 <span class="text-sm font-normal not-italic opacity-40">DT</span></div>
+                </div>
+                <div class="express-card p-8 md:p-10 text-center">
+                    <h4 class="luxury-font text-2xl md:text-3xl text-white mb-2">1 Semaine</h4>
+                    <p class="text-[10px] text-zinc-500 uppercase tracking-widest mb-6">Traitement prioritaire</p>
+                    <div class="text-4xl md:text-5xl font-black luxury-font italic">300 <span class="text-sm font-normal not-italic opacity-40">DT</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- OPTIONS À LA CARTE -->
+        <div class="max-w-5xl mx-auto mb-20 md:mb-40 px-4 md:px-6">
+            <h3 class="luxury-font text-3xl md:text-4xl text-center italic mb-12 md:mb-16 gold-text">Options à la Carte</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 lg:gap-x-24 gap-y-6 md:gap-y-8">
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-4 md:pb-5">
+                    <span class="text-[10px] md:text-[12px] font-black tracking-widest text-zinc-400">ÉCRAN GÉANT LED HD</span>
+                    <span class="text-md md:text-lg font-black text-white">1500 DT</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-4 md:pb-5">
+                    <span class="text-[10px] md:text-[12px] font-black tracking-widest text-zinc-400">GIRAFE CINÉMA (GRUE)</span>
+                    <span class="text-md md:text-lg font-black text-white">800 DT</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-4 md:pb-5">
+                    <span class="text-[10px] md:text-[12px] font-black tracking-widest text-red-500">VIDÉO CONTINUE (FULL MOVIE)</span>
+                    <span class="text-md md:text-lg font-black text-red-500">800 DT</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-4 md:pb-5">
+                    <span class="text-[10px] md:text-[12px] font-black tracking-widest text-red-500">VIDÉO REEL (INSTA/TIKTOK)</span>
+                    <span class="text-md md:text-lg font-black text-red-500">500 DT</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-4 md:pb-5">
+                    <span class="text-[10px] md:text-[12px] font-black tracking-widest text-zinc-400">DRONE 4K (AÉRIEN)</span>
+                    <span class="text-md md:text-lg font-black text-white">600 DT</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-zinc-800 pb-4 md:pb-5">
+                    <span class="text-[10px] md:text-[12px] font-black tracking-widest text-zinc-400">PHOTOBOOK PRESTIGE</span>
+                    <span class="text-md md:text-lg font-black text-white">450 DT</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-20 md:mt-40 pb-10 md:pb-20 text-center border-t border-zinc-900 pt-10 md:pt-20">
+        <h2 class="luxury-font text-4xl md:text-5xl italic gold-text opacity-40 mb-8 md:mb-12">Yosri Filmmaker</h2>
+        <div class="flex flex-col justify-center items-center gap-6 text-[10px] font-bold tracking-[0.3em] uppercase text-zinc-400 md:flex-row md:gap-12 md:tracking-[0.4em]">
+            <span>Sousse, Tunisie</span>
+            <span class="hidden md:block opacity-20">|</span>
+            <span>WhatsApp: +216 99 967 269</span>
+            <span class="hidden md:block opacity-20">|</span>
+            <span>Studio Masterpiece</span>
+        </div>
+        <p class="mt-16 md:mt-24 text-[8px] md:text-[9px] text-zinc-800 tracking-[0.5em] md:tracking-[1em] uppercase">© 2026 Cinematic Production</p>
+    </footer>
+
+</body>
+</html>
