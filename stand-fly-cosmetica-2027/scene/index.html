@@ -12,6 +12,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 
 const P = new URLSearchParams(location.search);
 const VIEW = P.get('view') || 'front';
@@ -25,7 +28,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffe
 renderer.setPixelRatio(1);
 renderer.setSize(W, H);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.72;
+renderer.toneMappingExposure = 0.8;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -71,6 +74,39 @@ function woodTexture(vertical = true) {
   return t;
 }
 M.wood = new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55 });
+
+// ================= DETAIL LIBRARY =================
+const labelTex = (accent) => canvasTex(512, 256, (g, w, h) => {
+  g.fillStyle = '#fbfaf7'; g.fillRect(0, 0, w, h);
+  g.fillStyle = accent; g.fillRect(0, h * 0.78, w, h * 0.06);
+  g.fillStyle = '#2a3140'; g.font = '700 44px Inter'; g.textAlign = 'center'; g.fillText('SERUM', w * 0.25, h * 0.42); g.fillText('SERUM', w * 0.75, h * 0.42);
+  g.font = '400 22px Inter'; g.fillStyle = '#6b7383'; g.fillText('active ingredient', w * 0.25, h * 0.6); g.fillText('active ingredient', w * 0.75, h * 0.6);
+});
+const LABELS = { blue: labelTex(FLY_BLUE), wood: labelTex('#8a6a45'), teal: labelTex('#1c5a78') };
+const PM = {
+  frost: new THREE.MeshPhysicalMaterial({ color: '#f4f6f8', roughness: 0.35, transmission: 0.3, thickness: 0.02, clearcoat: 1 }),
+  amber: new THREE.MeshPhysicalMaterial({ color: '#9a5a22', roughness: 0.08, clearcoat: 1, metalness: 0.05 }),
+  glassBlue: new THREE.MeshPhysicalMaterial({ color: '#33508f', roughness: 0.08, clearcoat: 1 }),
+  whiteGloss: new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.15, clearcoat: 1 }),
+  chrome: new THREE.MeshStandardMaterial({ color: '#d8d8d8', metalness: 1, roughness: 0.18 }),
+  gold: new THREE.MeshStandardMaterial({ color: '#c9a66b', metalness: 1, roughness: 0.25 }),
+  black: new THREE.MeshStandardMaterial({ color: '#1d1f23', roughness: 0.35 }),
+};
+// cosmetic product: 'pump' | 'dropper' | 'jar' | 'tube' | 'spray'
+function product(type, accent = 'blue', s = 1) {
+  const g = new THREE.Group();
+  const lab = (r, h, y) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.004, r * 1.004, h, 32, 1, true), new THREE.MeshStandardMaterial({ map: LABELS[accent], roughness: 0.5 })); m.position.y = y; g.add(m); };
+  const C = (rt, rb, h, mat, y, seg = 32) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); m.position.y = y; m.castShadow = true; g.add(m); return m; };
+  if (type === 'pump') { C(0.032, 0.032, 0.15, PM.whiteGloss, 0.075); lab(0.032, 0.07, 0.07); C(0.012, 0.014, 0.02, PM.chrome, 0.16); C(0.016, 0.016, 0.025, PM.whiteGloss, 0.183); const n = C(0.005, 0.005, 0.04, PM.whiteGloss, 0.19); n.rotation.z = Math.PI / 2; n.position.x = 0.02; }
+  if (type === 'dropper') { C(0.022, 0.022, 0.075, PM.amber, 0.0375); lab(0.022, 0.04, 0.035); C(0.014, 0.016, 0.022, PM.gold, 0.086); C(0.008, 0.011, 0.045, PM.black, 0.118); }
+  if (type === 'jar') { C(0.042, 0.04, 0.045, PM.frost, 0.0225); C(0.044, 0.044, 0.022, accent === 'wood' ? M.wood : PM.whiteGloss, 0.056); }
+  if (type === 'tube') { const m = C(0.022, 0.022, 0.15, PM.whiteGloss, 0.095); m.scale.z = 0.55; lab(0.0225, 0.07, 0.1); g.children[g.children.length - 1].scale.z = 0.55; C(0.014, 0.016, 0.022, accent === 'blue' ? PM.glassBlue : PM.black, 0.011); }
+  if (type === 'spray') { C(0.026, 0.026, 0.13, PM.glassBlue, 0.065); C(0.012, 0.012, 0.015, PM.chrome, 0.137); C(0.02, 0.02, 0.04, PM.whiteGloss, 0.163); }
+  g.scale.setScalar(s * 1.25);
+  return g;
+}
+const PRODUCT_TYPES = ['pump', 'dropper', 'jar', 'tube', 'spray'];
+
 
 const add = (mesh, castShadow = true, receive = true) => { mesh.castShadow = castShadow; mesh.receiveShadow = receive; scene.add(mesh); return mesh; };
 const box = (w, h, d, mat, x, y, z, r = 0) => {
@@ -125,13 +161,13 @@ hall.rotation.x = -Math.PI / 2; hall.position.set(4, 0, -3.5); add(hall, false, 
 const ceil = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshBasicMaterial({ color: '#15171a' }));
 ceil.rotation.x = Math.PI / 2; ceil.position.y = 12; scene.add(ceil);
 for (let i = -6; i <= 6; i++) for (let j = -6; j <= 3; j++) {
-  const l = new THREE.Mesh(new THREE.CircleGeometry(0.25, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.5, 1.35) }));
+  const l = new THREE.Mesh(new THREE.CircleGeometry(0.16, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.85, 0.78) }));
   l.rotation.x = Math.PI / 2; l.position.set(4 + i * 6, 11.95, -3.5 + j * 6); scene.add(l);
 }
 // truss lines
 for (let i = -6; i <= 6; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 100), M.dark); t.position.set(4 + i * 6 + 3, 11.5, -10); scene.add(t); }
 // distant neighbour stands (soft volumes) to read as an exhibition hall
-const ghost = new THREE.MeshStandardMaterial({ color: '#8e9096', roughness: 0.8 });
+const ghost = new THREE.MeshStandardMaterial({ color: '#6c6f76', roughness: 0.8 });
 [[-7, -4, 5, 3.2, 6], [15, -4, 5, 3.5, 6], [-6, 12, 7, 2.6, 4], [16, 13, 6, 3, 5], [4, 13, 6, 2.8, 4]].forEach(([x, z, w, h, d]) => {
   const g = box(w, h, d, ghost, x, h / 2, z); g.castShadow = false;
 });
@@ -186,6 +222,38 @@ const flyVisual = canvasTex(2400, 1600, (g, w, h) => {
   g.fillStyle = '#4b5566'; g.font = '400 70px Inter'; g.fillText('Innovation · Quality · Performance', 160, 1080);
   g.fillStyle = '#7a8496'; g.font = 'italic 400 60px Inter'; g.fillText('Ingredients for a better tomorrow', 160, 1420);
 });
+
+// richer key visual for the FLY backlight: cream dollop, droplets, botanical shadows
+{
+  const g = flyVisual.image.getContext('2d'), w = 2400, h = 1600;
+  const gr = g.createLinearGradient(w * 0.48, 0, w, h); gr.addColorStop(0, '#f7f9fc'); gr.addColorStop(1, '#d9e3f2'); g.fillStyle = gr; g.fillRect(w * 0.48, 0, w * 0.52, h);
+  // botanical leaf shadows
+  for (let i = 0; i < 26; i++) {
+    g.save(); g.translate(w * (0.55 + Math.random() * 0.45), h * (Math.random() * 0.6)); g.rotate(Math.random() * 6.28);
+    g.fillStyle = `rgba(90,120,110,${0.05 + Math.random() * 0.07})`; g.beginPath(); g.ellipse(0, 0, 40 + Math.random() * 60, 10 + Math.random() * 14, 0, 0, 6.283); g.fill(); g.restore();
+  }
+  // podium
+  const px = w * 0.74, py = h * 0.8;
+  const pg = g.createLinearGradient(px - 380, 0, px + 380, 0); pg.addColorStop(0, '#e6e9ef'); pg.addColorStop(0.5, '#ffffff'); pg.addColorStop(1, '#d4dae4');
+  g.fillStyle = pg; g.fillRect(px - 380, py - 40, 760, 260); g.fillStyle = '#f4f6fa'; g.beginPath(); g.ellipse(px, py - 40, 380, 60, 0, 0, 6.283); g.fill();
+  // cream dollop (stacked swirls)
+  for (let k = 0; k < 7; k++) {
+    const rr = 260 - k * 34, yy = py - 70 - k * 46;
+    const cg = g.createRadialGradient(px - rr * 0.3, yy - 30, 10, px, yy, rr * 1.1); cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.7, '#f3efe8'); cg.addColorStop(1, '#ddd5c9');
+    g.fillStyle = cg; g.beginPath(); g.ellipse(px + Math.sin(k) * 14, yy, rr, 62 - k * 3, 0, 0, 6.283); g.fill();
+    g.strokeStyle = 'rgba(190,178,160,0.45)'; g.lineWidth = 4; g.beginPath(); g.ellipse(px + Math.sin(k) * 14, yy + 18, rr * 0.92, 40, 0, 0.1, 3.0); g.stroke();
+  }
+  g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(px - 30, py - 400); g.quadraticCurveTo(px + 10, py - 470, px + 40, py - 520); g.quadraticCurveTo(px + 30, py - 440, px + 50, py - 395); g.closePath(); g.fill();
+  // droplets
+  for (let i = 0; i < 14; i++) {
+    const dx = w * (0.56 + Math.random() * 0.4), dy = h * (0.12 + Math.random() * 0.45), r = 14 + Math.random() * 36;
+    const dg = g.createRadialGradient(dx - r * 0.3, dy - r * 0.3, 1, dx, dy, r); dg.addColorStop(0, 'rgba(255,255,255,0.95)'); dg.addColorStop(0.6, 'rgba(190,210,240,0.55)'); dg.addColorStop(1, 'rgba(60,100,170,0.35)');
+    g.fillStyle = dg; g.beginPath(); g.arc(dx, dy, r, 0, 6.283); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.9)'; g.beginPath(); g.arc(dx - r * 0.35, dy - r * 0.35, r * 0.18, 0, 6.283); g.fill();
+  }
+  flyVisual.needsUpdate = true;
+}
+
 lightbox(3.0, 2.0, flyVisual, new THREE.Vector3(5.3, F + 1.75, -6.80));
 // low wood bench/plinth under FLY display with LED underlight
 box(3.2, 0.32, 0.45, M.wood, 5.3, F + 0.28, -6.6, 0.02);
@@ -245,8 +313,8 @@ function archNiche(dCenter, label) {
     for (let b = 0; b < 5; b++) {
       const bh = 0.12 + ((b + k) % 3) * 0.03, br = 0.03 + (b % 2) * 0.008;
       const bot = new THREE.Mesh(new THREE.CylinderGeometry(br, br, bh, 20), new THREE.MeshPhysicalMaterial({ color: cols[(b + k) % 5], roughness: 0.2, clearcoat: 1 }));
-      bot.position.set(-0.32 + b * 0.16, sy + 0.0125 + bh / 2, depth / 2); bot.castShadow = true; grp.add(bot);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(br * 0.6, br * 0.6, 0.03, 16), M.white); cap.position.set(bot.position.x, sy + 0.0125 + bh + 0.015, depth / 2); grp.add(cap);
+      bot.position.set(-0.32 + b * 0.16, sy + 0.0125 + bh / 2, depth / 2); bot.castShadow = true; bot.visible = false; grp.add(bot);
+      
     }
   });
   // base presenter: low console with samples
@@ -277,7 +345,7 @@ archNiche(4.4, 'Nouryon');
   for (let i = 0; i < 7; i++) {
     const bh = 0.14 + (i % 3) * 0.04, br = 0.035;
     const b = new THREE.Mesh(new THREE.CylinderGeometry(br, br, bh, 20), new THREE.MeshPhysicalMaterial({ color: ['#ffffff', '#cfe0ef', '#1c5a78', '#e9e2d4'][i % 4], roughness: 0.2, clearcoat: 1 }));
-    b.position.set(7.65 + ((i % 2) - 0.5) * 0.18, F + 1.03 + bh / 2, -(0.9 + i * 0.25)); add(b);
+    b.position.set(7.65 + ((i % 2) - 0.5) * 0.18, F + 1.03 + bh / 2, -(0.9 + i * 0.25)); b.visible = false; add(b);
   }
   // slim backlit totem at far end of presenter (visible from facade and right aisle)
   const totemTex = canvasTex(600, 2000, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.save(); g.translate(w / 2, h / 2); g.rotate(-Math.PI / 2); drawWordmark(g, 'NOURYON', 0, -40, 150, 'rgb(28,90,120)', 800, 0.1); drawWordmark(g, 'Specialty Ingredients', 0, 120, 60, '#556070', 400, 0.08); g.restore(); });
@@ -304,9 +372,10 @@ archNiche(4.4, 'Nouryon');
     drawWordmark(g, 'FREY & LAU', 1200, h / 2, 96, 'rgb(120,92,60)', 800, 0.06);
   });
   const lm = new THREE.Mesh(new THREE.PlaneGeometry(1.32, 0.5), new THREE.MeshBasicMaterial({ map: t, transparent: true, color: new THREE.Color(0.95, 0.95, 0.95) }));
-  lm.position.set(6.57, F + 0.66, -0.247); scene.add(lm);
+  lm.position.set(6.57, F + 0.66, -0.214); lm.material.color.setRGB(1.1, 1.1, 1.1); scene.add(lm);
+  const lmb = new THREE.Mesh(new RoundedBoxGeometry(1.36, 0.42, 0.012, 2, 0.006), new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.15, clearcoat: 1 })); lmb.position.set(6.57, F + 0.66, -0.222); lmb.castShadow = true; scene.add(lmb);
   // a few samples + tablet on top
-  box(0.3, 0.012, 0.22, M.dark, 6.2, F + 1.13, -0.7);
+  
 }
 // small tablet/screen stand "D" sketch near counter -> digital catalogue kiosk
 // (skipped: kept counter clean)
@@ -339,14 +408,15 @@ TABLES.forEach(([x, d], i) => { tulipTable(x, d); for (let k = 0; k < 4; k++) ch
 
 // ---------- planters (as per sketch) — slim white planters with foliage
 const leafGeo = (() => { const s = new THREE.Shape(); s.moveTo(0, 0); s.quadraticCurveTo(0.035, 0.07, 0, 0.16); s.quadraticCurveTo(-0.035, 0.07, 0, 0); return new THREE.ShapeGeometry(s, 6); })();
-const leafMats = ['#3f6b3a', '#4d7d42', '#365e33', '#5b8a4a'].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, side: THREE.DoubleSide }));
+const leafMats = ['#3f6b3a', '#4d7d42', '#365e33', '#5b8a4a', '#6c9a56', '#2f5530'].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, side: THREE.DoubleSide }));
 function planter(x, d, h = 0.75, plantH = 1.4, r = 0.27, kind = 'bush') {
   const pot = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.86, h, 48), M.white); pot.position.set(x, F + h / 2, -d); add(pot);
   const soil = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r * 0.95, 0.02, 32), M.soil); soil.position.set(x, F + h - 0.03, -d); add(soil);
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, plantH * 0.7, 8), M.trunk); trunk.position.set(x, F + h + plantH * 0.35, -d); add(trunk);
-  const n = kind === 'tree' ? 900 : 520;
+  const n = kind === 'tree' ? 1700 : 1000;
+  for (let pb = 0; pb < 60; pb++) { const a = Math.random() * 6.283, rr = Math.sqrt(Math.random()) * r * 0.88; const peb = new THREE.Mesh(new THREE.SphereGeometry(0.018 + Math.random() * 0.012, 8, 6), M.whiteMatte); peb.scale.y = 0.6; peb.position.set(x + Math.cos(a) * rr, F + h - 0.02, -d + Math.sin(a) * rr); scene.add(peb); }
   for (let i = 0; i < n; i++) {
-    const leaf = new THREE.Mesh(leafGeo, leafMats[i % 4]);
+    const leaf = new THREE.Mesh(leafGeo, leafMats[i % 6]);
     const t = Math.random();
     let y, rad;
     if (kind === 'tree') { y = h + plantH * (0.45 + 0.55 * Math.pow(Math.random(), 0.8)); rad = 0.55 * Math.sin(Math.PI * (y - h - plantH * 0.42) / (plantH * 0.62)) * Math.random() ** 0.5; }
@@ -354,7 +424,7 @@ function planter(x, d, h = 0.75, plantH = 1.4, r = 0.27, kind = 'bush') {
     const a = Math.random() * Math.PI * 2;
     leaf.position.set(x + Math.cos(a) * rad, F + y, -d + Math.sin(a) * rad);
     leaf.rotation.set(Math.random() * 2 - 1, a, Math.random() * 2.4 - 1.2);
-    leaf.scale.setScalar(0.8 + Math.random() * 0.8);
+    leaf.scale.setScalar(0.6 + Math.random() * 0.9);
     leaf.castShadow = true; scene.add(leaf);
   }
 }
@@ -406,9 +476,147 @@ const RC = new THREE.Vector3(4.3, 0, -3.55), R = 3.05, RY0 = 3.75, RH = 0.85;
   for (let k = 0; k < 3; k++) { const a = k * Math.PI * 2 / 3; const c = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 12 - y, 4), M.cable); c.position.set(4.75 + Math.cos(a) * r, (12 + y) / 2, -4.25 + Math.sin(a) * r); scene.add(c); }
 });
 
+
+// ================= DETAIL PASS =================
+// trade-fair aisle carpet (needle felt) instead of bare hall floor
+{
+  const t = canvasTex(1024, 1024, (g, w, h) => { g.fillStyle = '#4c5058'; g.fillRect(0, 0, w, h); const id = g.getImageData(0, 0, w, h); for (let i = 0; i < id.data.length; i += 4) { const n = (Math.random() - 0.5) * 26; id.data[i] += n; id.data[i + 1] += n; id.data[i + 2] += n + 2; } g.putImageData(id, 0, 0); });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(50, 50);
+  hall.material = new THREE.MeshStandardMaterial({ map: t, roughness: 0.96 });
+}
+// stand floor: subtle 1.0 x 0.5 m tile seams
+{
+  const t = canvasTex(1024, 1024, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(150,145,138,0.55)'; g.fillRect(0, 0, w, 3); g.fillRect(0, h / 2, w, 3); g.fillRect(0, 0, 3, h); });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 1);
+  M.floor.map = t; M.floor.needsUpdate = true;
+}
+// products in the arched niches (front of each shelf) — replaces simple cylinders visually
+[[2.0, 'wood'], [4.4, 'teal']].forEach(([dc, acc]) => {
+  [0.75, 1.15, 1.55].forEach((sy, k) => {
+    for (let b = 0; b < 5; b++) {
+      const p = product(PRODUCT_TYPES[(b + k) % 5], acc, 0.85);
+      p.position.set(0.37, F + sy + 0.013, -(dc - 0.32 + b * 0.16)); p.rotation.y = Math.PI / 2 + (b - 2) * 0.15; scene.add(p);
+    }
+  });
+  // console top display: tray + products + leaflets
+  const tray = box(0.24, 0.015, 0.7, M.wood, 0.3, F + 0.556, -dc, 0.004);
+  for (let b = 0; b < 4; b++) { const p = product(PRODUCT_TYPES[(b + 2) % 5], acc, 1); p.position.set(0.3, F + 0.564, -(dc - 0.24 + b * 0.16)); p.rotation.y = Math.PI / 2; scene.add(p); }
+});
+// NOURYON corner presenter: styled product line-up on wood top
+for (let i = 0; i < 9; i++) { const p = product(PRODUCT_TYPES[i % 5], 'teal', 1); p.position.set(7.65 + ((i % 2) - 0.5) * 0.16, F + 1.03, -(0.65 + i * 0.24)); p.rotation.y = -Math.PI / 2 + (i % 3 - 1) * 0.2; scene.add(p); }
+// counter dressing: tablet on stand, acrylic brochure holder, orchid
+{
+  const tab = new THREE.Group();
+  const stand = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), PM.chrome); stand.position.y = 0.06; tab.add(stand);
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.26, 0.18, 0.01, 2, 0.004), PM.black); body.position.set(0, 0.17, 0.0); body.rotation.x = -0.35; tab.add(body);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.16), new THREE.MeshBasicMaterial({ map: canvasTex(480, 320, (g, w, h) => { const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#dfe7f5'); g.fillStyle = gr; g.fillRect(0, 0, w, h); drawFlyLogo(g, w / 2 - 20, h / 2 - 20, 90); drawWordmark(g, 'Product catalogue', w / 2, h / 2 + 70, 26, '#4b5566', 500, 0.05); }) }));
+  scr.position.set(0, 0.17 + 0.006 * Math.cos(0.35), 0.006); scr.rotation.x = -0.35; tab.add(scr);
+  tab.position.set(6.25, F + 1.12, -0.75); tab.rotation.y = Math.PI; scene.add(tab);
+  // brochure holder (A4, 3 pockets)
+  const acr = new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, transmission: 0.95, thickness: 0.004, transparent: true, opacity: 0.4 });
+  const broT = canvasTex(420, 600, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = '#e8eef8'; g.fillRect(0, h * 0.45, w, h * 0.55); drawFlyLogo(g, w / 2 - 20, 110, 80); drawWordmark(g, 'Cosmetic Ingredients', w / 2, 220, 28, '#1f2735', 700, 0.02); });
+  for (let k = 0; k < 3; k++) {
+    const br = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.21), new THREE.MeshStandardMaterial({ map: broT, roughness: 0.6 }));
+    br.position.set(6.95 + k * 0.17, F + 1.22, -0.45); br.rotation.x = -0.25; scene.add(br);
+    const pk = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.004), acr); pk.position.set(6.95 + k * 0.17, F + 1.18, -0.43); pk.rotation.x = -0.25; scene.add(pk);
+  }
+  // orchid in white pot
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.12, 32), PM.whiteGloss); pot.position.set(5.75, F + 1.18, -0.6); add(pot);
+  const stemM = new THREE.MeshStandardMaterial({ color: '#4b5e3a', roughness: 0.8 });
+  const petalM = new THREE.MeshStandardMaterial({ color: '#fbf7f9', roughness: 0.5, side: THREE.DoubleSide });
+  for (let s = 0; s < 2; s++) {
+    const pts = []; for (let i = 0; i <= 10; i++) { const t = i / 10; pts.push(new THREE.Vector3(Math.sin(t * 2.4) * 0.12 * (s ? -1 : 1), t * 0.42, Math.cos(t * 2) * 0.02)); }
+    const curve = new THREE.CatmullRomCurve3(pts); const stem = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.003, 6), stemM); stem.position.set(5.75, F + 1.24, -0.6); scene.add(stem);
+    for (let f2 = 0; f2 < 6; f2++) { const t = 0.45 + f2 * 0.1; const p = curve.getPoint(Math.min(t, 1)); for (let q = 0; q < 5; q++) { const pt = new THREE.Mesh(new THREE.CircleGeometry(0.018, 10), petalM); pt.scale.set(1, 0.7, 1); pt.position.set(5.75 + p.x + Math.cos(q * 1.256) * 0.014, F + 1.24 + p.y + Math.sin(q * 1.256) * 0.014, -0.6 + p.z + 0.01); pt.rotation.set(0.2, (s ? 0.4 : -0.4), q * 1.256); scene.add(pt); } }
+  }
+  for (let l = 0; l < 3; l++) { const lf = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 8), new THREE.MeshStandardMaterial({ color: '#3f6b3a', roughness: 0.5 })); lf.scale.set(1.3, 0.12, 0.45); lf.position.set(5.75 + (l - 1) * 0.05, F + 1.25, -0.6); lf.rotation.y = l * 1.1; scene.add(lf); }
+}
+// table dressing: bud vase + cups + leaflet
+const cupM = PM.whiteGloss;
+TABLES.forEach(([x, d], i) => {
+  const vase = new THREE.Mesh(new THREE.LatheGeometry([[0, 0], [0.03, 0], [0.035, 0.05], [0.015, 0.13], [0.018, 0.16], [0, 0.16]].map(p => new THREE.Vector2(p[0], p[1])), 32), PM.whiteGloss);
+  vase.position.set(x, F + 0.75, -d); add(vase);
+  for (let k = 0; k < 3; k++) { const st = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.18 + k * 0.03, 4), new THREE.MeshStandardMaterial({ color: '#506b3c' })); st.position.set(x + (k - 1) * 0.01, F + 0.85 + k * 0.015, -d); st.rotation.z = (k - 1) * 0.15; scene.add(st); const bl = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), new THREE.MeshStandardMaterial({ color: k === 1 ? '#e9dcc6' : '#ffffff' })); bl.position.set(x + (k - 1) * 0.025, F + 0.94 + k * 0.03, -d); scene.add(bl); }
+  for (let k = 0; k < 2; k++) {
+    const a = Math.PI / 4 + k * Math.PI + i;
+    const cx = x + Math.sin(a) * 0.24, cz = -d + Math.cos(a) * 0.24;
+    const sau = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.008, 32), cupM); sau.position.set(cx, F + 0.754, cz); add(sau);
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.028, 0.06, 32), cupM); cup.position.set(cx, F + 0.79, cz); add(cup);
+    const cof = new THREE.Mesh(new THREE.CircleGeometry(0.032, 24), new THREE.MeshStandardMaterial({ color: '#5a3a22', roughness: 0.3 })); cof.rotation.x = -Math.PI / 2; cof.position.set(cx, F + 0.815, cz); scene.add(cof);
+  }
+  const lf = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.21), new THREE.MeshStandardMaterial({ map: canvasTex(420, 600, (g, w, h) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); drawFlyLogo(g, w / 2 - 20, 120, 80); g.fillStyle = '#dfe7f5'; g.fillRect(40, 260, w - 80, 260); }), roughness: 0.6 }));
+  lf.rotation.x = -Math.PI / 2; lf.rotation.z = 0.4 + i; lf.position.set(x - 0.12, F + 0.752, -d + 0.1); scene.add(lf);
+});
+// pebbles on planters + denser foliage handled in planter(); extra LED grazing on slats
+// architectural scale figures (matte, abstract)
+function figure(x, z, rotY, h = 1.75, pose = 0) {
+  const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: '#e9ebef', roughness: 0.6, transparent: true, opacity: 0.5, depthWrite: false });
+  const k = h / 1.75;
+  [[-0.09, 0], [0.09, 0]].forEach(([lx], i) => { const l = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.78, 4, 12), m); l.position.set(lx, 0.45, (i ? 1 : -1) * pose * 0.08); l.rotation.x = (i ? -1 : 1) * pose * 0.15; g.add(l); });
+  const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 6, 16), m); t.scale.set(1, 1, 0.62); t.position.y = 1.18; g.add(t);
+  [[-0.24], [0.24]].forEach(([ax], i) => { const a = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.55, 4, 10), m); a.position.set(ax, 1.12, 0); a.rotation.z = (i ? -1 : 1) * 0.08; g.add(a); });
+  const nk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 12), m); nk.position.y = 1.52; g.add(nk);
+  const hd = new THREE.Mesh(new THREE.SphereGeometry(0.105, 24, 16), m); hd.scale.set(0.92, 1.1, 1); hd.position.y = 1.65; g.add(hd);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = false; } });
+  g.scale.setScalar(k); g.position.set(x, 0, z); g.rotation.y = rotY; scene.add(g); return g;
+}
+if (!['top', 'inside'].includes(VIEW)) {
+  figure(5.05, 1.05, Math.PI + 0.9, 1.72);     // visitor approaching the counter
+  figure(-1.6, 2.6, 0.6, 1.8, 1);              // passer-by left aisle
+    figure(1.25, -3.6, -Math.PI / 2, 1.7);       // inside, at NOURYON niche
+  figure(1.05, -2.6, -Math.PI / 2 + 0.5, 1.62); // inside, second visitor
+}
+// neighbour stands: give them graphics so the hall reads as busy
+[[-7, -4, 5, 3.2, 6], [15, -4, 5, 3.5, 6]].forEach(([x, z, w, h, d], i) => {
+  const t = canvasTex(1024, 512, (g, W2, H2) => { const gr = g.createLinearGradient(0, 0, W2, 0); gr.addColorStop(0, i ? '#d8e6e0' : '#efe2d6'); gr.addColorStop(1, '#ffffff'); g.fillStyle = gr; g.fillRect(0, 0, W2, H2); g.fillStyle = 'rgba(40,50,60,.35)'; g.fillRect(80, 200, 380, 40); g.fillRect(80, 260, 260, 22); });
+  const pnl = new THREE.Mesh(new THREE.PlaneGeometry(d * 0.8, h * 0.55), new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(0.55, 0.55, 0.55) }));
+  pnl.position.set(x + (i ? -w / 2 - 0.01 : w / 2 + 0.01), h * 0.55, z); pnl.rotation.y = i ? -Math.PI / 2 : Math.PI / 2; scene.add(pnl);
+});
+
+// ================= PREMIUM PASS =================
+const GOLD = new THREE.MeshStandardMaterial({ color: '#d4b98c', metalness: 1, roughness: 0.22 });
+// glossy reflective stand floor (planar reflection seen through a lightly transparent lacquer)
+{
+  M.floor.transparent = true; M.floor.opacity = 0.80; M.floor.needsUpdate = true;
+  const rg = new THREE.ShapeGeometry(roundedRectShape(0, 0, SW, SD, 0.6, 0.6, 0, 0), 32); rg.rotateX(-Math.PI / 2);
+  const refl = new Reflector(rg, { textureWidth: Math.round(W * 0.6), textureHeight: Math.round(H * 0.6), color: 0x8a8a8a, clipBias: 0.003 });
+  refl.position.y = F - 0.003; scene.add(refl);
+}
+// fluted (ribbed) counter front + champagne trims
+{
+  const fl = new THREE.MeshPhysicalMaterial({ color: '#f5f3ef', roughness: 0.3, clearcoat: 0.5 });
+  const fg = new THREE.CylinderGeometry(0.022, 0.022, 0.9, 12, 1, false, 0, Math.PI);
+  for (let x = 5.93; x <= 7.22; x += 0.046) { const m = new THREE.Mesh(fg, fl); m.rotation.y = -Math.PI / 2; m.position.set(x, F + 0.6, -0.25); m.castShadow = true; m.receiveShadow = true; scene.add(m); }
+  for (let a = Math.PI / 2 + 0.06; a < Math.PI * 1.5; a += 0.115) { const m = new THREE.Mesh(fg, fl); m.position.set(5.9 + Math.cos(a) * 0.4, F + 0.6, -(0.65 - Math.sin(a) * 0.4)); m.rotation.y = -a + Math.PI; m.castShadow = true; scene.add(m); }
+  const tr = new THREE.Shape(); tr.moveTo(5.9, 0.22); tr.lineTo(7.28, 0.22); tr.lineTo(7.28, 1.08); tr.lineTo(5.9, 1.08); tr.absarc(5.9, 0.65, 0.43, Math.PI / 2, Math.PI * 1.5, false);
+  extrudePlan(tr, 0.012, F + 1.066, GOLD);
+  const tr2 = new THREE.Shape(); tr2.moveTo(5.9, 0.235); tr2.lineTo(7.26, 0.235); tr2.lineTo(7.26, 1.065); tr2.lineTo(5.9, 1.065); tr2.absarc(5.9, 0.65, 0.415, Math.PI / 2, Math.PI * 1.5, false);
+  extrudePlan(tr2, 0.01, F + 0.13, GOLD);
+}
+// ring header: champagne edge lines + top LED glow
+[RY0 + RH + 0.002, RY0 + 0.012].forEach(y => { const t = new THREE.Mesh(new THREE.TorusGeometry(R + 0.004, 0.009, 8, 220), GOLD); t.rotation.x = Math.PI / 2; t.position.set(RC.x, y, RC.z); scene.add(t); });
+// Nouryon presenter + reserve: champagne shadow-line trims
+box(0.62, 0.01, 0.01, GOLD, 7.65, F + 0.97, -0.33);
+// arch niches: gold outline on the arch
+[2.0, 4.4].forEach(dc => {
+  const w = 0.9, h = 2.1; const pts = [];
+  pts.push(new THREE.Vector3(-w / 2 - 0.01, 0.05, 0)); pts.push(new THREE.Vector3(-w / 2 - 0.01, h - w / 2, 0));
+  for (let i = 0; i <= 24; i++) { const a = Math.PI - i / 24 * Math.PI; pts.push(new THREE.Vector3(Math.cos(a) * (w / 2 + 0.01), h - w / 2 + Math.sin(a) * (w / 2 + 0.01), 0)); }
+  pts.push(new THREE.Vector3(w / 2 + 0.01, 0.05, 0));
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.02), 200, 0.006, 6), GOLD);
+  tube.rotation.y = Math.PI / 2; tube.position.set(0.16 + 0.285, F, -dc); scene.add(tube);
+});
+// boucle ivory upholstery
+{
+  const bt = canvasTex(512, 512, (g, w, h) => { g.fillStyle = '#ece6dc'; g.fillRect(0, 0, w, h); for (let i = 0; i < 9000; i++) { const x = Math.random() * w, y = Math.random() * h; g.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,0.55)' : 'rgba(170,158,140,0.35)'; g.beginPath(); g.arc(x, y, 1 + Math.random() * 2.2, 0, 6.283); g.fill(); } });
+  bt.wrapS = bt.wrapT = THREE.RepeatWrapping; bt.repeat.set(2, 2);
+  cushion.map = bt; cushion.color.set('#ffffff'); cushion.roughness = 1; cushion.needsUpdate = true;
+  chairShell.color.set('#f1ede6');
+}
+
 // ---------- general lighting (hall)
-scene.add(new THREE.HemisphereLight('#dfe6f0', '#6d6a66', 0.18));
-const sun = new THREE.DirectionalLight('#fff7ec', 0.45);
+scene.add(new THREE.HemisphereLight('#dfe6f0', '#6d6a66', 0.10));
+const sun = new THREE.DirectionalLight('#fff4e4', 0.32);
 sun.position.set(10, 16, 8); sun.target.position.set(4, 0, -3.5); scene.add(sun.target);
 sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
 Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 }); sun.shadow.bias = -0.0004; sun.shadow.radius = 6;
@@ -440,8 +648,23 @@ if (VIEW === 'top' || VIEW === 'aerial') {
 scene.traverse(o => { if (o.material && 'envMapIntensity' in o.material) o.material.envMapIntensity = 0.35; });
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+if (!P.get('noao')) { const ao = new GTAOPass(scene, camera, W, H); ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: 16 }); ao.blendIntensity = 0.9; composer.addPass(ao); }
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.28, 0.45, 1.0));
 composer.addPass(new OutputPass());
+composer.addPass(new ShaderPass({
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main(){ vec4 c = texture2D(tDiffuse, vUv);
+      vec3 col = c.rgb;
+      col = mix(col, col*col*(3.0-2.0*col), 0.22);              // soft S-curve contrast
+      float l = dot(col, vec3(0.299,0.587,0.114));
+      col += vec3(0.022,0.010,-0.012) * smoothstep(0.45,1.0,l);  // warm highlights
+      col += vec3(-0.006,0.0,0.012) * (1.0-smoothstep(0.0,0.35,l)); // cool shadows
+      vec2 d = vUv - 0.5; float v = smoothstep(0.85, 0.25, length(d*vec2(1.1,1.0)));
+      col *= mix(0.72, 1.0, v);
+      gl_FragColor = vec4(col, c.a); }`
+}));
 composer.render();
 
 // expose projection for annotation overlays
