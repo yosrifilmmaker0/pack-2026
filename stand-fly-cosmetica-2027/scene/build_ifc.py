@@ -109,7 +109,11 @@ def lightbox(name, x0, y0, x1, y1, z0, h, desc):
 lightbox("Backlight FLY 3000x2000", 3.75, 6.77, 6.85, 6.85, F + 0.7, 2.1, "Caisson lumineux textile backlight, visuel FLY 'Cosmetic Ingredients'")
 lightbox("Backlight FREY & LAU 1250x1750", 0.16, 0.30, 0.24, 1.60, F + 0.63, 1.85, "Caisson lumineux textile backlight FREY & LAU")
 lightbox("Backlight NOURYON 1250x1750", 0.16, 2.70, 0.24, 4.00, F + 0.63, 1.85, "Caisson lumineux textile backlight NOURYON")
-lightbox("Backlight NOURYON totem 550x2000", 7.37, 2.61, 7.93, 2.69, F + 1.05, 2.1, "Totem lumineux NOURYON")
+# curved NOURYON totem (cintre R420)
+_cx, _cy, _r, _th = 7.65, 2.65 + 0.42 - 0.05, 0.42, 0.62 / 0.42
+_o = [(_cx + _r * math.sin(a), _cy - _r * math.cos(a)) for a in [(-_th / 2 + _th * i / 24) for i in range(25)]]
+_i = [(_cx + (_r - 0.06) * math.sin(a), _cy - (_r - 0.06) * math.cos(a)) for a in [(_th / 2 - _th * i / 24) for i in range(25)]]
+element("IfcFurnishingElement", "Totem cintre backlight NOURYON 620x2000", solid(poly_profile(_o + _i), F + 1.05, 2.0), LED, description="Totem lumineux cintre R420, textile backlight NOURYON")
 lightbox("Backlight NOURYON lateral 1900x900", 7.95, 0.60, 8.0, 2.50, F + 0.07, 0.9, "Visuel lumineux NOURYON cote allee laterale")
 
 # --- sample presenters: arched niches (FREY & LAU d=2.0, NOURYON d=4.4)
@@ -165,6 +169,23 @@ ring("IfcBuildingElementProxy", "Couronne suspendue FLY D6100 h850", 4.3, 3.55, 
 ring("IfcBuildingElementProxy", "Anneau LED sous couronne", 4.3, 3.55, 3.05, 0.2, 3.73, 0.02, LED)
 ring("IfcLightFixture", "Halo LED D2100", 4.75, 4.25, 1.05, 0.05, F + 3.23, 0.05, LED)
 ring("IfcLightFixture", "Halo LED D1500", 4.75, 4.25, 0.75, 0.05, F + 2.98, 0.05, LED)
+
+# --- architecture details (v3)
+ring("IfcCovering", "Incrustation circulaire chene au sol R2920", 4.3, 3.55, 2.92, 0.12, F, 0.002, WOOD, predefined="FLOORING")
+element("IfcCovering", "Auvent lumineux espaces partenaires", solid(poly_profile(rounded_rect(0.16, 0.15, 0.95, 4.85, 0, 0.35, 0.35, 0)), F + 2.75, 0.09), WHITE, predefined="CEILING",
+        description="Auvent laque blanc, sous-face LED diffusante")
+for nm, (x0, x1, z0, z1) in {"haut": (3.5, 7.1, F + 3.0, F + 3.05), "bas": (3.5, 7.1, F + 0.45, F + 0.5)}.items():
+    box("IfcBuildingElementProxy", f"Cadre portail FLY - traverse {nm}", x0, 6.71, x1, 6.85, z0, z1 - z0 if z1 > z0 else 0.05, WHITE)
+for nm, (x0, x1) in {"gauche": (3.5, 3.74), "droite": (6.86, 7.1)}.items():
+    box("IfcBuildingElementProxy", f"Cadre portail FLY - montant {nm}", x0, 6.71, x1, 6.85, F + 0.45, 2.6, WHITE)
+def slat(x, y, a, h=2.85):
+    c, s_ = math.cos(a), math.sin(a)
+    pts = [(x + px * c - py * s_, y + px * s_ + py * c) for px, py in ((-0.02, -0.03), (0.02, -0.03), (0.02, 0.03), (-0.02, 0.03))]
+    element("IfcMember", "Tasseau chene cintre reserve", solid(poly_profile(pts), F, h), WOOD)
+xx = 0.25
+while xx < 1.55: slat(xx, 4.96, 0); xx += 0.075
+a = -math.pi / 2
+while a <= 0.001: slat(1.55 + math.cos(a) * 0.49, 5.45 + math.sin(a) * 0.49, -(a + math.pi / 2)); a += 0.075 / 0.49
 
 f.write(OUT)
 print("written", OUT, len(list(f.by_type("IfcProduct"))), "products")
