@@ -1,0 +1,471 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const P = new URLSearchParams(location.search);
+const VIEW = P.get('view') || 'front';
+const W = +(P.get('w') || 2560), H = +(P.get('h') || 1440);
+
+// ---------- plan coordinates: x = 0..8 along facade (left->right seen from aisle), d = 0..7 depth from facade. world z = -d
+const SW = 8, SD = 7;
+const FLY_BLUE = '#1c3c8c';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.72;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+RectAreaLightUniformsLib.init();
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#1a1c20');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+// ---------- materials
+const M = {
+  white: new THREE.MeshPhysicalMaterial({ color: '#f3f2ef', roughness: 0.32, clearcoat: 0.4, clearcoatRoughness: 0.25 }),
+  whiteMatte: new THREE.MeshStandardMaterial({ color: '#eeedea', roughness: 0.7 }),
+  floor: new THREE.MeshPhysicalMaterial({ color: '#e9e7e3', roughness: 0.12, clearcoat: 0.8, clearcoatRoughness: 0.08 }),
+  hall: new THREE.MeshStandardMaterial({ color: '#5d6066', roughness: 0.32, metalness: 0.0 }),
+  blue: new THREE.MeshStandardMaterial({ color: FLY_BLUE, roughness: 0.4 }),
+  led: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.35, 2.0) }),
+  ledSoft: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.38, 1.2) }),
+  dark: new THREE.MeshStandardMaterial({ color: '#2a2c30', roughness: 0.6 }),
+  cable: new THREE.MeshStandardMaterial({ color: '#555', roughness: 0.5, metalness: 0.6 }),
+  soil: new THREE.MeshStandardMaterial({ color: '#3a2e25', roughness: 1 }),
+  trunk: new THREE.MeshStandardMaterial({ color: '#6b5640', roughness: 0.9 }),
+  glass: new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.05, transmission: 0.9, thickness: 0.01, transparent: true, opacity: 0.35 }),
+};
+// procedural light oak
+function woodTexture(vertical = true) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#c8a27a'; g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * 512, a = 0.04 + Math.random() * 0.1;
+    g.strokeStyle = Math.random() < 0.5 ? `rgba(120,80,45,${a})` : `rgba(240,210,170,${a})`;
+    g.lineWidth = 0.6 + Math.random() * 2.4;
+    g.beginPath(); g.moveTo(x, 0);
+    for (let y = 0; y <= 512; y += 32) g.lineTo(x + Math.sin(y * 0.013 + i) * 4, y);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; if (!vertical) t.rotation = Math.PI / 2;
+  return t;
+}
+M.wood = new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55 });
+
+const add = (mesh, castShadow = true, receive = true) => { mesh.castShadow = castShadow; mesh.receiveShadow = receive; scene.add(mesh); return mesh; };
+const box = (w, h, d, mat, x, y, z, r = 0) => {
+  const g = r > 0 ? new RoundedBoxGeometry(w, h, d, 3, r) : new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat); m.position.set(x, y, z); return add(m);
+};
+// extrude a plan shape (points in x,d) vertically from y0 to y0+h
+function extrudePlan(shape, h, y0, mat, bevel = 0) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 48 });
+  g.rotateX(-Math.PI / 2); // shape (x, y) -> world (x, z=-y); extrusion goes +y
+  // after rotateX(-90): (sx, sy, sz) -> (sx, sz, -sy)
+  const m = new THREE.Mesh(g, mat); m.position.y = y0; return add(m);
+}
+function roundedRectShape(x0, d0, x1, d1, rFL, rFR, rBR, rBL) {
+  // front = d0 (smaller depth). Shape uses (x, d)
+  const s = new THREE.Shape();
+  s.moveTo(x0 + rFL, d0);
+  s.lineTo(x1 - rFR, d0); if (rFR) s.quadraticCurveTo(x1, d0, x1, d0 + rFR);
+  s.lineTo(x1, d1 - rBR); if (rBR) s.quadraticCurveTo(x1, d1, x1 - rBR, d1);
+  s.lineTo(x0 + rBL, d1); if (rBL) s.quadraticCurveTo(x0, d1, x0, d1 - rBL);
+  s.lineTo(x0, d0 + rFL); if (rFL) s.quadraticCurveTo(x0, d0, x0 + rFL, d0);
+  return s;
+}
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+// FLY wordmark: bold italic FLY + swoosh arrow
+function drawFlyLogo(g, cx, cy, size, color = FLY_BLUE) {
+  g.save(); g.fillStyle = color;
+  g.font = `italic 900 ${size}px Inter, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('FLY', cx - size * 0.12, cy);
+  const ax = cx + size * 0.95, ay = cy - size * 0.38, s = size * 0.55;
+  g.beginPath();
+  g.moveTo(ax - s * 0.9, ay + s * 0.35); g.lineTo(ax + s * 0.45, ay - s * 0.35); g.lineTo(ax - s * 0.1, ay + s * 0.05);
+  g.lineTo(ax + s * 0.25, ay - s * 0.05); g.lineTo(ax - s * 0.35, ay + s * 0.5); g.lineTo(ax - s * 0.25, ay + s * 0.2); g.closePath(); g.fill();
+  g.restore();
+}
+function drawWordmark(g, text, cx, cy, size, color = '#2b2f36', weight = 600, spacing = 0.12) {
+  g.save(); g.fillStyle = color; g.font = `${weight} ${size}px Inter, sans-serif`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  if ('letterSpacing' in g) g.letterSpacing = `${size * spacing}px`;
+  g.fillText(text, cx, cy); g.restore();
+}
+
+// ---------- hall
+const hall = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), M.hall);
+hall.rotation.x = -Math.PI / 2; hall.position.set(4, 0, -3.5); add(hall, false, true);
+// aisle carpet in front (dark grey)
+// hall ceiling + lights (far, just ambience)
+const ceil = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshBasicMaterial({ color: '#15171a' }));
+ceil.rotation.x = Math.PI / 2; ceil.position.y = 12; scene.add(ceil);
+for (let i = -6; i <= 6; i++) for (let j = -6; j <= 3; j++) {
+  const l = new THREE.Mesh(new THREE.CircleGeometry(0.25, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.5, 1.35) }));
+  l.rotation.x = Math.PI / 2; l.position.set(4 + i * 6, 11.95, -3.5 + j * 6); scene.add(l);
+}
+// truss lines
+for (let i = -6; i <= 6; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 100), M.dark); t.position.set(4 + i * 6 + 3, 11.5, -10); scene.add(t); }
+// distant neighbour stands (soft volumes) to read as an exhibition hall
+const ghost = new THREE.MeshStandardMaterial({ color: '#8e9096', roughness: 0.8 });
+[[-7, -4, 5, 3.2, 6], [15, -4, 5, 3.5, 6], [-6, 12, 7, 2.6, 4], [16, 13, 6, 3, 5], [4, 13, 6, 2.8, 4]].forEach(([x, z, w, h, d]) => {
+  const g = box(w, h, d, ghost, x, h / 2, z); g.castShadow = false;
+});
+hall.material.envMapIntensity = 0.8;
+
+// ---------- stand platform (raised 10cm, rounded front corners, LED shadow gap)
+const plat = roundedRectShape(0, 0, SW, SD, 0.6, 0.6, 0, 0);
+extrudePlan(plat, 0.075, 0.03, M.floor);
+const gapShape = roundedRectShape(0.04, 0.04, SW - 0.04, SD - 0.04, 0.56, 0.56, 0, 0);
+const gap = extrudePlan(gapShape, 0.03, 0.0, M.led); gap.castShadow = false;
+const F = 0.105; // finished floor height
+
+// ---------- REAR: reserve 2x2 (back-left), back wall with FLY backlit 3m, wood slats
+const WALL_H = 3.0;
+// back wall (x 2 -> 8) thickness .15 at d 6.85..7
+box(6.0, WALL_H, 0.15, M.white, 5.0, F + WALL_H / 2, -6.925);
+// reserve: rounded front-right corner, door on right face
+const res = roundedRectShape(0, 5.0, 2.0, 7.0, 0, 0.45, 0, 0);
+extrudePlan(res, WALL_H, F, M.white);
+// reserve door (right face, x=2) — flush door with shadow gaps
+box(0.01, 2.1, 0.86, M.dark, 2.002, F + 1.05, -6.15).material = new THREE.MeshStandardMaterial({ color: '#d8d6d1', roughness: 0.6 });
+box(0.012, 2.12, 0.012, M.dark, 2.004, F + 1.06, -5.71); box(0.012, 2.12, 0.012, M.dark, 2.004, F + 1.06, -6.59);
+// reserve top cove LED
+box(0.02, 0.02, 1.6, M.led, 2.01, F + WALL_H - 0.08, -6.0).castShadow = false;
+// reserve front face: FLY & Partners small logo
+{
+  const t = canvasTex(1024, 512, (g, w, h) => { g.fillStyle = '#f3f2ef'; g.fillRect(0, 0, w, h); drawFlyLogo(g, w / 2 - 60, h / 2 - 30, 170); drawWordmark(g, '& PARTNERS', w / 2, h / 2 + 120, 54, '#3b414b', 500, 0.3); });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshStandardMaterial({ map: t, roughness: 0.4 }));
+  m.position.set(0.85, F + 2.2, -4.999); scene.add(m);
+}
+
+// FLY backlit lightbox (3m) on back wall x 3.8 .. 6.8
+function lightbox(w, h, tex, pos, rotY = 0, frame = 0.05) {
+  const grp = new THREE.Group();
+  const fr = new THREE.Mesh(new RoundedBoxGeometry(w + frame * 2, h + frame * 2, 0.08, 3, 0.02), M.white); fr.castShadow = true; grp.add(fr);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.02, 1.02, 1.02) }));
+  face.position.z = 0.041; grp.add(face);
+  grp.position.copy(pos); grp.rotation.y = rotY; scene.add(grp);
+  // glow onto surroundings
+  const ral = new THREE.RectAreaLight('#fff4e6', 1.6, w, h); ral.position.set(0, 0, 0.06); grp.add(ral);
+  return grp;
+}
+const flyVisual = canvasTex(2400, 1600, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#e6edf8'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  // soft serum drop + ripples (abstract beauty visual, right half)
+  for (let i = 9; i > 0; i--) { g.strokeStyle = `rgba(28,60,140,${0.025 + i * 0.012})`; g.lineWidth = 6; g.beginPath(); g.ellipse(w * 0.72, h * 0.72, i * 90, i * 28, 0, 0, Math.PI * 2); g.stroke(); }
+  const dg = g.createRadialGradient(w * 0.7, h * 0.36, 20, w * 0.72, h * 0.42, 260); dg.addColorStop(0, '#ffffff'); dg.addColorStop(0.6, '#b9cbea'); dg.addColorStop(1, 'rgba(28,60,140,0.0)');
+  g.fillStyle = dg; g.beginPath(); g.moveTo(w * 0.72, h * 0.12); g.bezierCurveTo(w * 0.80, h * 0.32, w * 0.82, h * 0.42, w * 0.72, h * 0.55); g.bezierCurveTo(w * 0.62, h * 0.42, w * 0.64, h * 0.32, w * 0.72, h * 0.12); g.fill();
+  drawFlyLogo(g, 520, 330, 260);
+  g.fillStyle = '#1f2735'; g.font = '700 128px Inter'; g.textAlign = 'left'; g.fillText('Cosmetic', 160, 720); g.fillText('Ingredients', 160, 860);
+  g.fillStyle = FLY_BLUE; g.fillRect(165, 935, 160, 10);
+  g.fillStyle = '#4b5566'; g.font = '400 70px Inter'; g.fillText('Innovation · Quality · Performance', 160, 1080);
+  g.fillStyle = '#7a8496'; g.font = 'italic 400 60px Inter'; g.fillText('Ingredients for a better tomorrow', 160, 1420);
+});
+lightbox(3.0, 2.0, flyVisual, new THREE.Vector3(5.3, F + 1.75, -6.80));
+// low wood bench/plinth under FLY display with LED underlight
+box(3.2, 0.32, 0.45, M.wood, 5.3, F + 0.28, -6.6, 0.02);
+box(3.1, 0.02, 0.02, M.led, 5.3, F + 0.1, -6.40).castShadow = false;
+// wood vertical slats on back wall either side (light filter, not a closed partition)
+function slats(x0, x1, dz, h, y0) {
+  const n = Math.floor((x1 - x0) / 0.09);
+  for (let i = 0; i <= n; i++) { const s = box(0.045, h, 0.07, M.wood, x0 + i * 0.09, y0 + h / 2, -dz); }
+  box(x1 - x0 + 0.05, 0.02, 0.02, M.led, (x0 + x1) / 2, y0 + h - 0.02, -dz + 0.06).castShadow = false;
+}
+slats(2.2, 3.35, 6.78, 2.7, F);
+slats(7.15, 7.95, 6.78, 2.7, F);
+
+// ---------- LEFT WALL (x=0, d 0 -> 5): Frey & Lau (d 0-2.5) + Nouryon (d 2.5-5)
+// rounded front end to keep the curved language
+{
+  const s = roundedRectShape(0, 0.05, 0.16, 5.0, 0.08, 0.08, 0, 0);
+  extrudePlan(s, 2.8, F, M.white);
+  // continuous LED cove at the top
+  box(0.02, 0.02, 4.8, M.led, 0.17, F + 2.72, -2.55).castShadow = false;
+}
+// exterior face of the left wall: discreet co-branding
+{
+  const t = canvasTex(2400, 800, (g, w, h) => { g.fillStyle = '#f3f2ef'; g.fillRect(0, 0, w, h); drawFlyLogo(g, 520, h / 2, 230); g.fillStyle = '#c8ccd3'; g.fillRect(1000, 250, 4, 300); drawWordmark(g, 'FREY & LAU', 1380, h / 2, 100, 'rgb(120,92,60)', 800, 0.06); drawWordmark(g, 'NOURYON', 1980, h / 2, 100, 'rgb(28,90,120)', 800, 0.1); });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.2), new THREE.MeshStandardMaterial({ map: t, roughness: 0.4 }));
+  m.rotation.y = -Math.PI / 2; m.position.set(-0.002, F + 1.9, -2.5); scene.add(m);
+}
+function partnerVisual(name, sub, accent) {
+  return canvasTex(1200, 1700, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#eef1f5'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 6; i++) { g.strokeStyle = `rgba(${accent},${0.06 + i * 0.02})`; g.lineWidth = 5; g.beginPath(); g.arc(w * 0.5, h * 1.05, 380 + i * 70, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+    drawWordmark(g, name, w / 2, 360, 120, `rgb(${accent})`, 800, 0.08);
+    g.fillStyle = `rgb(${accent})`; g.fillRect(w / 2 - 70, 470, 140, 8);
+    drawWordmark(g, sub, w / 2, 590, 52, '#4b5566', 400, 0.06);
+    drawWordmark(g, 'Partner of', w / 2, 1450, 40, '#8a93a3', 400, 0.1);
+    drawFlyLogo(g, w / 2 - 20, 1550, 90);
+  });
+}
+// samples presenter: arched wood-lined niche with backlit shelves + bottles
+function archNiche(dCenter, label) {
+  const w = 0.9, h = 2.1, depth = 0.28, x = 0.16;
+  const grp = new THREE.Group();
+  // arch frame (white) built from extruded shape with arch hole
+  const outer = new THREE.Shape(); outer.moveTo(-w / 2 - 0.08, 0); outer.lineTo(w / 2 + 0.08, 0); outer.lineTo(w / 2 + 0.08, h + 0.08); outer.lineTo(-w / 2 - 0.08, h + 0.08); outer.closePath();
+  const hole = new THREE.Path(); hole.moveTo(-w / 2, 0.05); hole.lineTo(w / 2, 0.05); hole.lineTo(w / 2, h - w / 2); hole.absarc(0, h - w / 2, w / 2, 0, Math.PI, false); hole.lineTo(-w / 2, 0.05);
+  outer.holes.push(hole);
+  const fg = new THREE.ExtrudeGeometry(outer, { depth: depth, bevelEnabled: false, curveSegments: 40 });
+  const fm = new THREE.Mesh(fg, M.white); fm.castShadow = true; grp.add(fm);
+  // wood back
+  const back = new THREE.Shape(); back.moveTo(-w / 2, 0.05); back.lineTo(w / 2, 0.05); back.lineTo(w / 2, h - w / 2); back.absarc(0, h - w / 2, w / 2, 0, Math.PI, false); back.closePath();
+  const bm = new THREE.Mesh(new THREE.ShapeGeometry(back, 40), M.wood); bm.position.z = 0.005; grp.add(bm);
+  // shelves with LED edge
+  const cols = ['#ffffff', '#dfe7f5', FLY_BLUE, '#c9b79a', '#ffffff'];
+  [0.75, 1.15, 1.55].forEach((sy, k) => {
+    const sh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.025, depth - 0.02), M.white); sh.position.set(0, sy, depth / 2); sh.castShadow = true; grp.add(sh);
+    const le = new THREE.Mesh(new THREE.BoxGeometry(w, 0.008, 0.01), M.led); le.position.set(0, sy - 0.016, depth - 0.03); grp.add(le);
+    for (let b = 0; b < 5; b++) {
+      const bh = 0.12 + ((b + k) % 3) * 0.03, br = 0.03 + (b % 2) * 0.008;
+      const bot = new THREE.Mesh(new THREE.CylinderGeometry(br, br, bh, 20), new THREE.MeshPhysicalMaterial({ color: cols[(b + k) % 5], roughness: 0.2, clearcoat: 1 }));
+      bot.position.set(-0.32 + b * 0.16, sy + 0.0125 + bh / 2, depth / 2); bot.castShadow = true; grp.add(bot);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(br * 0.6, br * 0.6, 0.03, 16), M.white); cap.position.set(bot.position.x, sy + 0.0125 + bh + 0.015, depth / 2); grp.add(cap);
+    }
+  });
+  // base presenter: low console with samples
+  const con = new THREE.Mesh(new RoundedBoxGeometry(w, 0.5, depth, 3, 0.02), M.white); con.position.set(0, 0.3, depth / 2); con.castShadow = true; grp.add(con);
+  const ral = new THREE.RectAreaLight('#fff1dd', 3.0, w * 0.9, 1.2); ral.position.set(0, 1.2, depth + 0.02); grp.add(ral);
+  grp.rotation.y = Math.PI / 2; // facing +x (into stand)
+  grp.position.set(x, F, -dCenter);
+  scene.add(grp);
+  return grp;
+}
+// Frey & Lau zone (d 0.15 .. 2.5): lightbox + niche
+lightbox(1.25, 1.75, partnerVisual('FREY & LAU', 'Fragrances & Flavours', '120,92,60'), new THREE.Vector3(0.21, F + 1.55, -0.95), Math.PI / 2);
+archNiche(2.0, 'Frey & Lau');
+// separation of zones: slim wood fin
+box(0.35, 2.6, 0.05, M.wood, 0.33, F + 1.3, -2.52);
+// Nouryon zone (d 2.6 .. 5)
+lightbox(1.25, 1.75, partnerVisual('NOURYON', 'Specialty Ingredients', '28,90,120'), new THREE.Vector3(0.21, F + 1.55, -3.35), Math.PI / 2);
+archNiche(4.4, 'Nouryon');
+
+// ---------- FRONT-RIGHT: reception counter "FLY / FREY & LAU" + Nouryon presenter on the corner
+// Nouryon corner presenter (x 7.3..8, d 0.25..2.8): curved low display + slim backlit totem
+{
+  const s = roundedRectShape(7.35, 0.35, 7.95, 2.8, 0.3, 0.25, 0.1, 0.1);
+  extrudePlan(s, 1.0, F, M.white);
+  const top = extrudePlan(roundedRectShape(7.33, 0.33, 7.97, 2.82, 0.3, 0.26, 0.1, 0.1), 0.03, F + 1.0, M.wood);
+  box(0.02, 0.02, 2.2, M.led, 7.33, F + 0.06, -1.6).castShadow = false;
+  // sample bottles on top
+  for (let i = 0; i < 7; i++) {
+    const bh = 0.14 + (i % 3) * 0.04, br = 0.035;
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(br, br, bh, 20), new THREE.MeshPhysicalMaterial({ color: ['#ffffff', '#cfe0ef', '#1c5a78', '#e9e2d4'][i % 4], roughness: 0.2, clearcoat: 1 }));
+    b.position.set(7.65 + ((i % 2) - 0.5) * 0.18, F + 1.03 + bh / 2, -(0.9 + i * 0.25)); add(b);
+  }
+  // slim backlit totem at far end of presenter (visible from facade and right aisle)
+  const totemTex = canvasTex(600, 2000, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.save(); g.translate(w / 2, h / 2); g.rotate(-Math.PI / 2); drawWordmark(g, 'NOURYON', 0, -40, 150, 'rgb(28,90,120)', 800, 0.1); drawWordmark(g, 'Specialty Ingredients', 0, 120, 60, '#556070', 400, 0.08); g.restore(); });
+  lightbox(0.55, 2.0, totemTex, new THREE.Vector3(7.65, F + 2.05, -2.65), 0);
+  // second face toward the right aisle
+  lightbox(1.9, 0.9, canvasTex(1900, 900, (g, w, h) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); drawWordmark(g, 'NOURYON', w / 2, h / 2 - 40, 190, 'rgb(28,90,120)', 800, 0.1); drawWordmark(g, 'Specialty Ingredients', w / 2, h / 2 + 140, 70, '#556070', 400, 0.08); }), new THREE.Vector3(7.98, F + 0.52, -1.55), Math.PI / 2, 0.02);
+}
+// reception counter: D/curved shape x 5.5..7.25, d 0.25..1.05
+{
+  const s = new THREE.Shape();
+  s.moveTo(5.9, 0.25); s.lineTo(7.25, 0.25); s.lineTo(7.25, 1.05); s.lineTo(5.9, 1.05);
+  s.absarc(5.9, 0.65, 0.4, Math.PI / 2, Math.PI * 1.5, false); // rounded left end (counter reads as a pill toward the aisle)
+  const body = extrudePlan(s, 1.02, F + 0.06, M.white);
+  const inset = new THREE.Shape(); inset.moveTo(5.92, 0.31); inset.lineTo(7.19, 0.31); inset.lineTo(7.19, 0.99); inset.lineTo(5.92, 0.99); inset.absarc(5.92, 0.65, 0.34, Math.PI / 2, Math.PI * 1.5, false);
+  extrudePlan(inset, 0.06, F, M.led).castShadow = false;
+  // wood top
+  const top = new THREE.Shape(); top.moveTo(5.9, 0.2); top.lineTo(7.3, 0.2); top.lineTo(7.3, 1.1); top.lineTo(5.9, 1.1); top.absarc(5.9, 0.65, 0.45, Math.PI / 2, Math.PI * 1.5, false);
+  extrudePlan(top, 0.04, F + 1.08, M.wood);
+  // logos on the front face (dual: FLY + FREY & LAU)
+  const t = canvasTex(1600, 600, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    drawFlyLogo(g, 420, h / 2 - 10, 200);
+    g.fillStyle = '#c8ccd3'; g.fillRect(w / 2 + 40, 160, 4, 280);
+    drawWordmark(g, 'FREY & LAU', 1200, h / 2, 96, 'rgb(120,92,60)', 800, 0.06);
+  });
+  const lm = new THREE.Mesh(new THREE.PlaneGeometry(1.32, 0.5), new THREE.MeshBasicMaterial({ map: t, transparent: true, color: new THREE.Color(0.95, 0.95, 0.95) }));
+  lm.position.set(6.57, F + 0.66, -0.247); scene.add(lm);
+  // a few samples + tablet on top
+  box(0.3, 0.012, 0.22, M.dark, 6.2, F + 1.13, -0.7);
+}
+// small tablet/screen stand "D" sketch near counter -> digital catalogue kiosk
+// (skipped: kept counter clean)
+
+// ---------- furniture: 3 tables x 4 chairs
+function tulipTable(x, d) {
+  const prof = [[0, 0], [0.26, 0], [0.26, 0.015], [0.06, 0.06], [0.035, 0.3], [0.035, 0.62], [0.12, 0.7], [0, 0.7]].map(p => new THREE.Vector2(p[0], p[1]));
+  const base = new THREE.Mesh(new THREE.LatheGeometry(prof, 48), M.white); base.position.set(x, F, -d); add(base);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 64), M.wood); top.position.set(x, F + 0.735, -d); add(top);
+  const edge = new THREE.Mesh(new THREE.CylinderGeometry(0.425, 0.425, 0.012, 64), M.white); edge.position.set(x, F + 0.72, -d); add(edge);
+}
+const chairShell = new THREE.MeshPhysicalMaterial({ color: '#f6f5f2', roughness: 0.4, clearcoat: 0.3 });
+const cushion = new THREE.MeshStandardMaterial({ color: '#d9dbe0', roughness: 0.95 });
+function chair(x, d, ang) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new RoundedBoxGeometry(0.46, 0.06, 0.44, 3, 0.025), chairShell); seat.position.y = 0.45; g.add(seat);
+  const cus = new THREE.Mesh(new RoundedBoxGeometry(0.42, 0.03, 0.38, 3, 0.012), cushion); cus.position.set(0, 0.49, 0.01); g.add(cus);
+  const back = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.3, 32, 1, true, Math.PI - 0.75, 1.5), chairShell);
+  back.material.side = THREE.DoubleSide; back.position.set(0, 0.68, 0.12); g.add(back);
+  for (const [lx, lz] of [[-0.19, -0.18], [0.19, -0.18], [-0.19, 0.18], [0.19, 0.18]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.44, 10), M.wood);
+    leg.position.set(lx * 1.08, 0.22, lz * 1.08); leg.rotation.z = -lx * 0.25; leg.rotation.x = lz * 0.25; g.add(leg);
+  }
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  g.position.set(x + Math.sin(ang) * 0.62, F, -d + Math.cos(ang) * 0.62);
+  g.rotation.y = ang; scene.add(g);
+}
+const TABLES = [[6.95, 4.25], [4.75, 4.25], [2.85, 2.35]];
+TABLES.forEach(([x, d], i) => { tulipTable(x, d); for (let k = 0; k < 4; k++) chair(x, d, Math.PI / 4 + k * Math.PI / 2 + (i === 2 ? 0.0 : 0)); });
+
+// ---------- planters (as per sketch) — slim white planters with foliage
+const leafGeo = (() => { const s = new THREE.Shape(); s.moveTo(0, 0); s.quadraticCurveTo(0.035, 0.07, 0, 0.16); s.quadraticCurveTo(-0.035, 0.07, 0, 0); return new THREE.ShapeGeometry(s, 6); })();
+const leafMats = ['#3f6b3a', '#4d7d42', '#365e33', '#5b8a4a'].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, side: THREE.DoubleSide }));
+function planter(x, d, h = 0.75, plantH = 1.4, r = 0.27, kind = 'bush') {
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.86, h, 48), M.white); pot.position.set(x, F + h / 2, -d); add(pot);
+  const soil = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r * 0.95, 0.02, 32), M.soil); soil.position.set(x, F + h - 0.03, -d); add(soil);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, plantH * 0.7, 8), M.trunk); trunk.position.set(x, F + h + plantH * 0.35, -d); add(trunk);
+  const n = kind === 'tree' ? 900 : 520;
+  for (let i = 0; i < n; i++) {
+    const leaf = new THREE.Mesh(leafGeo, leafMats[i % 4]);
+    const t = Math.random();
+    let y, rad;
+    if (kind === 'tree') { y = h + plantH * (0.45 + 0.55 * Math.pow(Math.random(), 0.8)); rad = 0.55 * Math.sin(Math.PI * (y - h - plantH * 0.42) / (plantH * 0.62)) * Math.random() ** 0.5; }
+    else { y = h + plantH * Math.pow(t, 0.7); rad = (0.12 + 0.3 * Math.sin(Math.PI * t * 0.9)) * Math.random() ** 0.4; }
+    const a = Math.random() * Math.PI * 2;
+    leaf.position.set(x + Math.cos(a) * rad, F + y, -d + Math.sin(a) * rad);
+    leaf.rotation.set(Math.random() * 2 - 1, a, Math.random() * 2.4 - 1.2);
+    leaf.scale.setScalar(0.8 + Math.random() * 0.8);
+    leaf.castShadow = true; scene.add(leaf);
+  }
+}
+// facade: two large planters (sketch: left & centre of facade)
+planter(1.25, 0.4, 0.6, 0.95, 0.25);
+planter(3.85, 0.4, 0.6, 0.95, 0.25);
+// back wall left of FLY display, back-right corner, right side
+planter(3.2, 6.45, 0.8, 1.5);
+planter(7.55, 6.3, 0.9, 1.9, 0.32, 'tree');
+planter(7.65, 5.0, 0.7, 1.2, 0.25);
+
+// ---------- suspended FLY ring header (signature element of the reference) — rigged from hall ceiling
+const RC = new THREE.Vector3(4.3, 0, -3.55), R = 3.05, RY0 = 3.75, RH = 0.85;
+{
+  const ringTex = canvasTex(8192, 512, (g, w, h) => {
+    g.fillStyle = '#f4f3f0'; g.fillRect(0, 0, w, h);
+    const at = (deg) => w * (0.5 + deg / 360); // deg 0 = facade
+    drawFlyLogo(g, at(-6), h / 2, 300);
+    g.fillStyle = '#1f2735'; g.font = '500 80px Inter'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('Ingredients for a better tomorrow', at(4), h / 2 + 30);
+    drawWordmark(g, 'FREY & LAU', at(-100), h / 2, 190, 'rgb(120,92,60)', 800, 0.08);
+    drawWordmark(g, 'NOURYON', at(100), h / 2, 190, 'rgb(28,90,120)', 800, 0.1);
+    drawFlyLogo(g, at(180), h / 2, 260);
+    drawWordmark(g, '·', at(-55), h / 2, 120, '#9aa2b0'); drawWordmark(g, '·', at(150), h / 2, 120, '#9aa2b0');
+  });
+  ringTex.wrapS = THREE.RepeatWrapping;
+  const outer = new THREE.Mesh(new THREE.CylinderGeometry(R, R, RH, 160, 1, true, -Math.PI, Math.PI * 2), new THREE.MeshStandardMaterial({ map: ringTex, roughness: 0.4 }));
+  outer.position.set(RC.x, RY0 + RH / 2, RC.z); add(outer, true, false);
+  const inner = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.2, R - 0.2, RH, 160, 1, true), M.whiteMatte); inner.material = M.whiteMatte.clone(); inner.material.side = THREE.BackSide;
+  inner.position.copy(outer.position); add(inner, true, false);
+  const capT = new THREE.Mesh(new THREE.RingGeometry(R - 0.2, R, 160), M.whiteMatte); capT.rotation.x = -Math.PI / 2; capT.position.set(RC.x, RY0 + RH, RC.z); scene.add(capT);
+  // underside: LED ring (indirect light)
+  const capB = new THREE.Mesh(new THREE.RingGeometry(R - 0.2, R, 160), M.led); capB.rotation.x = Math.PI / 2; capB.position.set(RC.x, RY0 - 0.001, RC.z); scene.add(capB);
+  // light cast down from the ring (indirect, no spots): soft point lights around the ring
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * Math.PI * 2;
+    const pl = new THREE.PointLight('#fff1dc', 2.4, 6, 1.6); pl.position.set(RC.x + Math.sin(a) * (R - 0.1), RY0 - 0.12, RC.z + Math.cos(a) * (R - 0.1)); scene.add(pl);
+  }
+  // rigging cables
+  for (let i = 0; i < 4; i++) {
+    const a = Math.PI / 4 + i * Math.PI / 2;
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 12 - RY0 - RH, 4), M.cable);
+    c.position.set(RC.x + Math.sin(a) * (R - 0.1), (12 + RY0 + RH) / 2, RC.z + Math.cos(a) * (R - 0.1)); scene.add(c);
+  }
+}
+// two inner LED halo rings above the central table (like the reference)
+[[1.05, 3.25], [0.75, 3.0]].forEach(([r, y]) => {
+  const t = new THREE.Mesh(new THREE.TorusGeometry(r, 0.025, 12, 120), M.led); t.rotation.x = Math.PI / 2; t.position.set(4.75, F + y, -4.25); scene.add(t);
+  const pl = new THREE.PointLight('#fff1dc', 1.6, 4, 1.8); pl.position.set(4.75, F + y - 0.2, -4.25); scene.add(pl);
+  for (let k = 0; k < 3; k++) { const a = k * Math.PI * 2 / 3; const c = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 12 - y, 4), M.cable); c.position.set(4.75 + Math.cos(a) * r, (12 + y) / 2, -4.25 + Math.sin(a) * r); scene.add(c); }
+});
+
+// ---------- general lighting (hall)
+scene.add(new THREE.HemisphereLight('#dfe6f0', '#6d6a66', 0.18));
+const sun = new THREE.DirectionalLight('#fff7ec', 0.45);
+sun.position.set(10, 16, 8); sun.target.position.set(4, 0, -3.5); scene.add(sun.target);
+sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 }); sun.shadow.bias = -0.0004; sun.shadow.radius = 6;
+scene.add(sun);
+// wash on left wall & back wall from LED coves
+const wash1 = new THREE.RectAreaLight('#fff2df', 2.2, 4.8, 0.3); wash1.position.set(0.3, F + 2.7, -2.55); wash1.lookAt(1.5, F + 0.5, -2.55); scene.add(wash1);
+const wash2 = new THREE.RectAreaLight('#fff2df', 2.0, 6, 0.3); wash2.position.set(5, F + 2.9, -6.6); wash2.lookAt(5, F + 0.5, -5.5); scene.add(wash2);
+
+// ---------- cameras
+let camera;
+const views = {
+  front:   { pos: [4.1, 1.7, 7.4],  tgt: [4.1, 1.9, -3.4], fov: 55 },
+  right34: { pos: [12.6, 2.1, 5.2],  tgt: [3.9, 1.45, -3.6], fov: 48 },
+  left34:  { pos: [-4.2, 2.0, 6.3],  tgt: [4.6, 1.45, -3.6], fov: 48 },
+  aerial:  { pos: [10.5, 9.5, 7.5],  tgt: [4.0, 0.6, -3.5], fov: 45 },
+  top:     { pos: [4.0, 24, -3.5],   tgt: [4.0, 0, -3.5],   fov: 25 },
+  inside:  { pos: [6.3, 1.6, -1.8],  tgt: [1.0, 1.4, -4.6], fov: 62 },
+};
+const v = views[VIEW];
+camera = new THREE.PerspectiveCamera(v.fov, W / H, 0.05, 200);
+camera.position.set(...v.pos); camera.lookAt(new THREE.Vector3(...v.tgt));
+if (VIEW === 'top') { camera.up.set(0, 0, -1); camera.lookAt(new THREE.Vector3(...v.tgt)); }
+if (VIEW === 'top' || VIEW === 'aerial') {
+  // hide ceiling + ring band for plan readability on top view
+  if (VIEW === 'top') scene.children.forEach(o => { if (o.position.y > RY0 - 0.2 && o !== camera) o.visible = false; });
+  ceil.visible = false;
+}
+
+scene.traverse(o => { if (o.material && 'envMapIntensity' in o.material) o.material.envMapIntensity = 0.35; });
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.28, 0.45, 1.0));
+composer.addPass(new OutputPass());
+composer.render();
+
+// expose projection for annotation overlays
+window.project = (x, y, d) => { const p = new THREE.Vector3(x, y, -d).project(camera); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H]; };
+
+if (P.get('labels')) {
+  const L = [
+    ['RÉSERVE 2×2 m', 1.0, 1.5, 6.0],
+    ['FLY — affichage backlight 3 m', 5.3, 1.0, 6.3],
+    ['FREY & LAU — backlight + présentoir', 0.9, 1.0, 1.3],
+    ['NOURYON — backlight + présentoir', 0.9, 1.0, 3.75],
+    ['Comptoir FLY / FREY & LAU', 6.5, 1.2, 0.65],
+    ['NOURYON — présentoir angle', 7.65, 1.2, 1.6],
+    ['Table 1 + 4 chaises', 6.95, 0.8, 4.25],
+    ['Table 2 + 4 chaises', 4.75, 0.8, 4.25],
+    ['Table 3 + 4 chaises', 2.85, 0.8, 2.35],
+  ];
+  const css = 'position:absolute;transform:translate(-50%,-50%);font:600 29px Inter;color:#fff;background:rgba(28,60,140,.88);padding:6px 12px;border-radius:6px;white-space:nowrap';
+  L.forEach(([t, x, y, d]) => { const [px, py] = window.project(x, y, d); const e = document.createElement('div'); e.textContent = t; e.style.cssText = css + `;left:${px}px;top:${py}px`; document.body.appendChild(e); });
+  const big = 'position:absolute;transform:translate(-50%,-50%);font:700 34px Inter;color:#fff;white-space:nowrap;letter-spacing:.04em';
+  const tag = (t, x, d, extra = '') => { const [px, py] = window.project(x, 0, d); const e = document.createElement('div'); e.textContent = t; e.style.cssText = big + `;left:${px}px;top:${py}px` + extra; document.body.appendChild(e); };
+  tag('▲  FAÇADE PRINCIPALE 8 m — EN FACE WHITE INDUSTRY  ▲', 4, -0.55);
+  tag('7 m', 8.45, 3.5, ';transform:translate(-50%,-50%) rotate(90deg)');
+  tag('Côté ouvert', 8.95, 3.5, ';transform:translate(-50%,-50%) rotate(90deg);font-weight:400;opacity:.8');
+}
+window.DONE = true;
+</script></body></html>
